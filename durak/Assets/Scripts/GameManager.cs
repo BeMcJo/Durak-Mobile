@@ -848,7 +848,7 @@ public class GameManager : MonoBehaviour
         Debug.Log("update game ui" + originalTurn + " " + defender + " " + deck.Count());
         handCountText.text = "x" + playerOrder[myTurn].hand.Count;
         deckCountText.text = "x" + deck.Count();
-        playerTurnText.text = "Defender\n" + playerOrder[defender].playerName + " " + playerOrder[defender].connectionId;// + "\nPlayer Defending\n" + defender;
+        playerTurnText.text = "Defender\n" + playerOrder[defender].playerName;// + " " + playerOrder[defender].connectionId;// + "\nPlayer Defending\n" + defender;
         if (defender == myTurn)
             playerTurnText.text = "Defender\nYou";
 
