@@ -166,10 +166,10 @@ public class Deck {
     public Deck()
     {
         deck = new List<Card>();
-        /*
+        ///*
         for (int i = 0; i < 4; i++)
         {
-            for (int j = 1; j <= 3; j++)
+            for (int j = 1; j <= 2; j++)
             {
                 Card c = new Card();
                 c.cardSuit = i;
@@ -179,8 +179,8 @@ public class Deck {
                 deck.Add(c);
             }
         }
-        */
-        ///*
+        //*/
+        /*
         for(int i = 0; i < 4; i++)
         {
             for(int j = 1; j <= 13; j++)
@@ -193,7 +193,7 @@ public class Deck {
                 deck.Add(c);
             }
         }
-        //*/
+        */
         //foreach (Card c in deck)
         //    Debug.Log(c.cardSuit + " " + c.cardValue);
     }

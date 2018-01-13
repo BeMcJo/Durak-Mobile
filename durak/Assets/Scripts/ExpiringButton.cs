@@ -43,5 +43,6 @@ public class ExpiringButton:MonoBehaviour
           //  pressed = true;
         Client.client.ConnectTo(host);
         GetComponent<Button>().interactable = false;
+        Client.client.ClearHostList();
     }
 }

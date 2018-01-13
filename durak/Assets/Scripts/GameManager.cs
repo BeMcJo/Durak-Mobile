@@ -44,6 +44,7 @@ public class GameManager : MonoBehaviour
                endBattleBtn,
                trumpCard,
                endGameCanvas,
+               playerTurnType,
                multiplayersCanvas;
 
     public GameObject actionButtonPrefab,
@@ -412,10 +413,15 @@ public class GameManager : MonoBehaviour
             return false;
         Debug.Log("could");
         AddCardsToAttackField(player, toTransfer);
-
+        if (HasFinishedGame(player))
+        {
+            Debug.Log("WOO WIN" + playerOrder[player].playerName);
+            StartCoroutine("EndGame");
+        }
         defender = NextAvailablePlayer(player);
         UpdateGameUI();
         UpdateOtherPlayerUI(player);
+        UpdateOtherPlayerUI(defender);
         UpdateActionButtons();
         return true;
     }
@@ -722,6 +728,10 @@ public class GameManager : MonoBehaviour
         hasSuccessfullyDefended = true;
         //field.Clear();
         //field = new List<FieldPair>();
+        for (int i = 0; i < playerOrder.Count; i++)
+        {
+            UpdateOtherPlayerUI(i);
+        }
         UpdateGameUI();
         UpdateActionButtons();
     }
@@ -828,6 +838,7 @@ public class GameManager : MonoBehaviour
             otherPlayerUI.transform.Find("PlayerHand").Find("HandCardsCountTxt").GetComponent<Text>().text = "x" + plyr.hand.Count;
             otherPlayerUI.transform.SetParent(otherPlayersContainer.transform);
             otherPlayerUI.transform.localScale = new Vector3(1, 1, 1);
+            UpdateOtherPlayerUI(p);
         }
         //handCountText.text = "Hand Count: " + playerOrder[myTurn].hand.Count;
         //deckCountText.text = "Deck Count: " + deck.Count();
@@ -850,7 +861,12 @@ public class GameManager : MonoBehaviour
         deckCountText.text = "x" + deck.Count();
         playerTurnText.text = "Defender\n" + playerOrder[defender].playerName;// + " " + playerOrder[defender].connectionId;// + "\nPlayer Defending\n" + defender;
         if (defender == myTurn)
+        {
             playerTurnText.text = "Defender\nYou";
+        }
+        playerTurnType.SetActive(myTurn == defender || myTurn == originalTurn);
+        playerTurnType.transform.Find("Shield").gameObject.SetActive(defender == myTurn);
+        playerTurnType.transform.Find("Sword").gameObject.SetActive(originalTurn == myTurn);
 
     }
 
@@ -858,12 +874,17 @@ public class GameManager : MonoBehaviour
     {
         if (player == myTurn)
             return;
-        //Debug.Log("player uis" + playerOrder[player].hand.Count);
+        Debug.Log("player uis" + player + " " + defender + " " + originalTurn); //playerOrder[player].hand.Count);
+        Debug.Log("" + (player == defender) + " " + (player == originalTurn));
         int pos = (myTurn + player - 1) % (playerOrder.Count - 1);
         Player p = playerOrder[player];
         //otherPlayersContainer.transform.GetChild(pos).Find("Text").GetComponent<Text>().text =
         //    p.playerName + "(" + p.connectionId + ")\nHand:" + p.hand.Count;
         otherPlayersContainer.transform.GetChild(pos).Find("PlayerHand").Find("HandCardsCountTxt").GetComponent<Text>().text = "x" + p.hand.Count;
+        GameObject otherPlayerTurnType = otherPlayersContainer.transform.GetChild(pos).Find("PlayerTurnType").gameObject;
+        otherPlayerTurnType.SetActive(player == defender || player == originalTurn);
+        otherPlayerTurnType.transform.Find("Shield").gameObject.SetActive(defender == player);
+        otherPlayerTurnType.transform.Find("Sword").gameObject.SetActive(originalTurn == player);
     }
 
     public void UpdateActionButtons()
@@ -899,6 +920,8 @@ public class GameManager : MonoBehaviour
         defendField = cardField.transform.Find("DefendField").gameObject;
         otherPlayersContainer = gameCanvas.transform.Find("OtherPlayers").Find("PlayersContainer").gameObject;
         playerActionsContainer = gameCanvas.transform.Find("PlayerActions").gameObject;
+
+        playerTurnType = GameObject.Find("PlayerTurnType");
 
         endGameCanvas = GameObject.Find("EndGameCanvas");
         endGameCanvas.transform.Find("Transitioner").Find("ActionBtn").GetComponent<Button>().onClick.AddListener(GoToMainScene);

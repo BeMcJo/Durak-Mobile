@@ -694,6 +694,7 @@ public class Server : MonoBehaviour
         sc.playerGO.transform.Find("NameText").GetComponent<Text>().text = playerName;
         sc.playerGO.transform.SetParent(playersList.transform);
         sc.playerGO.transform.localScale = new Vector3(1, 1, 1);
+        lobbyCanvas.transform.Find("StartBtn").GetComponent<Button>().interactable = true;
         //sc.playerGO.SetActive(true);
 
         // Tell everybody that new player has connected
@@ -707,6 +708,8 @@ public class Server : MonoBehaviour
         Destroy(players[cnnId].playerGO);
         // Remove this player from our client list
         players.Remove(cnnId);
+
+        lobbyCanvas.transform.Find("StartBtn").GetComponent<Button>().interactable = players.Count > 1;
         if (!gameStarted && !isBroadcasting)
         {
             StartBroadcast();

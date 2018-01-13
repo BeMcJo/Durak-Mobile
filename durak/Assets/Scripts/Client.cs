@@ -661,7 +661,7 @@ public class Client : MonoBehaviour
 
     }
 
-    private void ClearHostList()
+    public void ClearHostList()
     {
         //List<Host> expiredHosts = new List<Host>();
         foreach (KeyValuePair<Host, GameObject> kvp in hosts)
