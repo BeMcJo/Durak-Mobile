@@ -45,16 +45,21 @@ public class GameManager : MonoBehaviour
                trumpCard,
                endGameCanvas,
                playerTurnType,
+               tutorialCanvas,
                multiplayersCanvas;
 
     public GameObject actionButtonPrefab,
                       cardPrefab,
                       otherPlayerPrefab,
+                      animatedCardPrefab,
                       cardHolderPrefab;
 
     Text deckCountText,
          playerTurnText,
          handCountText;
+
+    float spawnCardTimer = 0;
+
     public int w, h;
     public List<List<Card>> playerHands;
     public List<Card> selected, 
@@ -71,7 +76,8 @@ public class GameManager : MonoBehaviour
     //          If no more cards to draw and player has no cards in hand, player is not a loser.
     //          If only 1 player remains, that player is loser. Game finishes and ends.
     //          If not, move to next available player to start turn
-    public int phase;
+    public int phase,
+               tutorialPage;
     public bool inGame;
     public bool hasDefended;
     public bool hasSuccessfullyDefended;
@@ -95,6 +101,7 @@ public class GameManager : MonoBehaviour
             cardSprites = Resources.LoadAll<Sprite>("Sprites/playing cards");
             w = Screen.width;
             h = Screen.height;
+            spawnCardTimer = Time.time;
             DontDestroyOnLoad(gameObject);
         }
         else
@@ -134,6 +141,31 @@ public class GameManager : MonoBehaviour
             else
                 hlg.spacing = -50;
 
+        }
+        if (Time.time - spawnCardTimer >= .7f )//&& mainCanvas.transform.GetChild(1).name != "AnimatedCard(Clone)")
+        {
+            GameObject canvas = null;
+            if (mainCanvas != null)
+            {
+                canvas = mainCanvas;
+            }
+            else if (multiplayersCanvas)
+            {
+                canvas = multiplayersCanvas;
+            }
+            else if (!isServer && Client.client && !Client.client.inLobby && Client.client.lobbySearchCanvas)
+            {
+                canvas = Client.client.lobbySearchCanvas;
+            }
+            if (canvas != null)
+            {
+                GameObject animatedCard = Instantiate(animatedCardPrefab);
+                float x = UnityEngine.Random.Range(-600f, 700f);
+                animatedCard.transform.SetParent(canvas.transform);
+                animatedCard.transform.SetSiblingIndex(1);
+                animatedCard.transform.localPosition = new Vector3(x, 500f, 0);
+            }
+            spawnCardTimer = Time.time;
         }
     }
 
@@ -1188,6 +1220,34 @@ public class GameManager : MonoBehaviour
         UpdateGameUI();
     }
 
+    public void OpenTutorialCanvas()
+    {
+        tutorialCanvas.SetActive(true);
+        tutorialPage = 0;
+        tutorialCanvas.transform.Find("Pages").GetChild(tutorialPage).gameObject.SetActive(true);
+    }
+
+    public void CloseTutorialCanvas()
+    {
+        tutorialCanvas.SetActive(false);
+        tutorialCanvas.transform.Find("Pages").GetChild(tutorialPage).gameObject.SetActive(false);
+    }
+
+    public void NextPage()
+    {
+        tutorialCanvas.transform.Find("Pages").GetChild(tutorialPage).gameObject.SetActive(false);
+        tutorialPage = (tutorialPage + 1) % tutorialCanvas.transform.Find("Pages").childCount;
+        tutorialCanvas.transform.Find("Pages").GetChild(tutorialPage).gameObject.SetActive(true);
+    }
+
+    public void PrevPage()
+    {
+
+        tutorialCanvas.transform.Find("Pages").GetChild(tutorialPage).gameObject.SetActive(false);
+        tutorialPage = (tutorialCanvas.transform.Find("Pages").childCount + tutorialPage - 1) % tutorialCanvas.transform.Find("Pages").childCount;
+        tutorialCanvas.transform.Find("Pages").GetChild(tutorialPage).gameObject.SetActive(true);
+    }
+
     public void LoadClientScene()
     {
         isServer = false;
@@ -1211,6 +1271,14 @@ public class GameManager : MonoBehaviour
     {
         mainCanvas = GameObject.Find("MainCanvas");
         mainCanvas.transform.Find("MultiplayerBtn").GetComponent<Button>().onClick.AddListener(GoToMultiplayerScene);
+        mainCanvas.transform.Find("RulesBtn").GetComponent<Button>().onClick.AddListener(OpenTutorialCanvas);
+
+        tutorialCanvas = GameObject.Find("TutorialCanvas");
+        tutorialCanvas.SetActive(false);
+        tutorialCanvas.transform.Find("BackBtn").GetComponent<Button>().onClick.AddListener(CloseTutorialCanvas);
+        tutorialCanvas.transform.Find("NextBtn").GetComponent<Button>().onClick.AddListener(NextPage);
+        tutorialCanvas.transform.Find("PrevBtn").GetComponent<Button>().onClick.AddListener(PrevPage);
+        tutorialPage = 0;
     }
 
     public void GoToMultiplayerScene()

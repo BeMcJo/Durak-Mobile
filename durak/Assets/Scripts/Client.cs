@@ -62,7 +62,7 @@ public class Client : MonoBehaviour
     private float connectionTime;
     private float timer, timeout = 30f;
     private bool isStarted = false;
-    private bool inLobby = false;
+    public bool inLobby = false;
     private bool requestingConnection = false;
     private bool inGame = false;
     private bool isConnected = false;
@@ -648,7 +648,7 @@ public class Client : MonoBehaviour
         lobbySearchCanvas.transform.Find("BackBtn").GetComponent<Button>().onClick.AddListener(GameManager.gm.GoToMultiplayerScene);
 
         lobbyCanvas.transform.Find("LeaveLobbyBtn").GetComponent<Button>().onClick.AddListener(client.LeaveLobby);
-        lobbyCanvas.transform.Find("StartBtn").GetComponent<Button>().onClick.AddListener(client.StartGame);
+        //lobbyCanvas.transform.Find("StartBtn").GetComponent<Button>().onClick.AddListener(client.StartGame);
 
         //Debug.Log(lobbyCanvas == null);
     }
