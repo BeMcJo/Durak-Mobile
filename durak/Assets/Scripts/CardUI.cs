@@ -190,7 +190,7 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerClickHandler,
                     {
                         int fpID = cardHolder.transform.GetSiblingIndex();
                         fp = GameManager.gm.field[fpID];
-                        if (GameManager.gm.CanDefend(fp, card))
+                        if (GameManager.gm.defender == GameManager.gm.myTurn && GameManager.gm.CanDefend(fp, card))
                         {
                             if(selected)
                             {
@@ -239,15 +239,15 @@ public class CardUI : MonoBehaviour, IPointerEnterHandler, IPointerClickHandler,
     {
         Debug.Log("deselecting defend card" + card);
         transform.SetParent(originalCardHolder);
-        Debug.Log(1);
+        //Debug.Log(1);
         transform.position = originalCardHolder.position;
-        Debug.Log(2);
+        //Debug.Log(2);
         GameManager.gm.defendCards.Remove(fp);
-        Debug.Log(3);
+        //Debug.Log(3);
         fp.defend = null;
         fp = null;
         GameManager.gm.UpdateActionButtons();
-        Debug.Log(40);
+        //Debug.Log(40);
     }
 
     // Use this for initialization

@@ -397,13 +397,14 @@ public class GameManager : MonoBehaviour
         //UpdateActionButtons(myTurn);
     }
 
-    public bool EndBattlePhase()
+    public bool CanEndBattlePhase()
     {
+        return phase == 1 ;
         //Debug.Log("End battle");
-        if (phase != 1)
-            return false;
-        CleanUpPhase();
-        return true;
+        //if (phase != 1)
+        //    return false;
+        //CleanUpPhase();
+        //return true;
     }
 
     public bool Transfer(int player, List<Card> toTransfer)
@@ -423,6 +424,7 @@ public class GameManager : MonoBehaviour
         UpdateOtherPlayerUI(player);
         UpdateOtherPlayerUI(defender);
         UpdateActionButtons();
+        StartCoroutine("EndBattleBtn");
         return true;
     }
 
@@ -526,6 +528,7 @@ public class GameManager : MonoBehaviour
         UpdateGameUI();
         UpdateOtherPlayerUI(player);
         UpdateActionButtons();
+        StartCoroutine("EndBattleBtn");
         return true;
     }
 
@@ -641,6 +644,7 @@ public class GameManager : MonoBehaviour
             Debug.Log("WOO WIN" + playerOrder[player].playerName);
             StartCoroutine("EndGame");
         }
+        StartCoroutine("EndBattleBtn");
         return true;
     }
 
@@ -765,6 +769,7 @@ public class GameManager : MonoBehaviour
         defendCards = new List<FieldPair>();
         myTurn = 0;
         gameEnded = false;
+        inGame = true;
         //defendField = new List<Card>();
     }
 
@@ -814,6 +819,18 @@ public class GameManager : MonoBehaviour
         return cardSprites[index];
     }
 
+    IEnumerator EndBattleBtn()
+    {
+        if (defender == myTurn)
+        {
+            endBattleBtn.transform.GetComponent<Button>().interactable = false;
+            yield return new WaitForSeconds(5f);
+            endBattleBtn.transform.GetComponent<Button>().interactable = true;
+        }
+            
+
+    }
+
     public void SetupUI()
     {
 
@@ -828,17 +845,19 @@ public class GameManager : MonoBehaviour
             cardUI.transform.position = cardHolder.transform.position;
             cardUI.transform.localScale = new Vector3(1, 1, 1);
         }
+        Debug.Log("CT" + playerOrder.Count);
         for (int i = 1; i < playerOrder.Count; i++)
         {
             int p = (myTurn + i) % playerOrder.Count;
-            //Debug.Log(p);
+            Debug.Log(p);
             Player plyr = playerOrder[p];
             GameObject otherPlayerUI = Instantiate(otherPlayerPrefab);
+            plyr.playerGO = otherPlayerUI;
             otherPlayerUI.transform.Find("NameTxt").GetComponent<Text>().text = plyr.playerName;// + "(" + plyr.connectionId + ")";
             otherPlayerUI.transform.Find("PlayerHand").Find("HandCardsCountTxt").GetComponent<Text>().text = "x" + plyr.hand.Count;
             otherPlayerUI.transform.SetParent(otherPlayersContainer.transform);
             otherPlayerUI.transform.localScale = new Vector3(1, 1, 1);
-            UpdateOtherPlayerUI(p);
+           // UpdateOtherPlayerUI(p);
         }
         //handCountText.text = "Hand Count: " + playerOrder[myTurn].hand.Count;
         //deckCountText.text = "Deck Count: " + deck.Count();
@@ -856,7 +875,7 @@ public class GameManager : MonoBehaviour
 
     private void UpdateGameUI()
     {
-        Debug.Log("update game ui" + originalTurn + " " + defender + " " + deck.Count());
+        //Debug.Log("update game ui" + originalTurn + " " + defender + " " + deck.Count());
         handCountText.text = "x" + playerOrder[myTurn].hand.Count;
         deckCountText.text = "x" + deck.Count();
         playerTurnText.text = "Defender\n" + playerOrder[defender].playerName;// + " " + playerOrder[defender].connectionId;// + "\nPlayer Defending\n" + defender;
@@ -873,15 +892,16 @@ public class GameManager : MonoBehaviour
     private void UpdateOtherPlayerUI(int player)
     {
         if (player == myTurn)
-            return;
-        Debug.Log("player uis" + player + " " + defender + " " + originalTurn); //playerOrder[player].hand.Count);
-        Debug.Log("" + (player == defender) + " " + (player == originalTurn));
-        int pos = (myTurn + player - 1) % (playerOrder.Count - 1);
+            return;//playerOrder[player].hand.Count);
+        //Debug.Log("" + (player == defender) + " " + (player == originalTurn));
+        int pos = (playerOrder.Count + player - myTurn - 2) % (playerOrder.Count - 1);
         Player p = playerOrder[player];
+
+        //Debug.Log("player uis" + player + " " + defender + " " + originalTurn + " " + playerOrder.Count + " " + pos + " "  + myTurn);
         //otherPlayersContainer.transform.GetChild(pos).Find("Text").GetComponent<Text>().text =
         //    p.playerName + "(" + p.connectionId + ")\nHand:" + p.hand.Count;
-        otherPlayersContainer.transform.GetChild(pos).Find("PlayerHand").Find("HandCardsCountTxt").GetComponent<Text>().text = "x" + p.hand.Count;
-        GameObject otherPlayerTurnType = otherPlayersContainer.transform.GetChild(pos).Find("PlayerTurnType").gameObject;
+        playerOrder[player].playerGO.transform.Find("PlayerHand").Find("HandCardsCountTxt").GetComponent<Text>().text = "x" + p.hand.Count;
+        GameObject otherPlayerTurnType = playerOrder[player].playerGO.transform.Find("PlayerTurnType").gameObject;
         otherPlayerTurnType.SetActive(player == defender || player == originalTurn);
         otherPlayerTurnType.transform.Find("Shield").gameObject.SetActive(defender == player);
         otherPlayerTurnType.transform.Find("Sword").gameObject.SetActive(originalTurn == player);
@@ -897,7 +917,17 @@ public class GameManager : MonoBehaviour
         transferBtn.gameObject.SetActive(phase == 1 && myTurn == defender && !hasDefended);
         transferBtn.transform.GetComponent<Button>().interactable = defendCards.Count == 0 && CanTransfer(myTurn, selected);
         endBattleBtn.gameObject.SetActive(phase == 1 && myTurn == defender);
-        
+    }
+
+    public void SetInteractableActionButtons(bool b)
+    {
+        //attackBtn.gameObject.SetActive(((phase == 0 && originalTurn == myTurn) || (phase == 1 && myTurn != defender)));
+        attackBtn.transform.GetComponent<Button>().interactable = b;
+        //defendBtn.gameObject.SetActive(phase == 1 && myTurn == defender);
+        defendBtn.transform.GetComponent<Button>().interactable = b;// defendCards.Count > 0;
+        //transferBtn.gameObject.SetActive(phase == 1 && myTurn == defender && !hasDefended);
+        transferBtn.transform.GetComponent<Button>().interactable = b;// defendCards.Count == 0 && CanTransfer(myTurn, selected);
+        endBattleBtn.transform.GetComponent<Button>().interactable = b; //gameObject.SetActive(phase == 1 && myTurn == defender);
     }
 
     public void LoadMultiplayerGameScene()
@@ -964,7 +994,7 @@ public class GameManager : MonoBehaviour
     public void CommitEndBattle()
     {
        // Debug.Log("commit end battle");
-        if (EndBattlePhase())
+        if (CanEndBattlePhase())
         {
             if (isServer)
             {
@@ -974,11 +1004,19 @@ public class GameManager : MonoBehaviour
             {
                 Client.client.CommitEndBattle();
             }
+            SetInteractableActionButtons(false);
         }
         else
         {
             Debug.Log("CANT END, battle phase didnt even begin!");
         }
+    }
+
+    public void PerformCommitEndBattle()
+    {
+        CleanUpPhase();
+        UpdateActionButtons();
+        //BattlePhase();
     }
 
     public void CommitTransfer()
@@ -1000,7 +1038,7 @@ public class GameManager : MonoBehaviour
                 return;
             }
         }
-        if (Transfer(myTurn, selected))
+        if (CanTransfer(myTurn, selected))
         {
             //Debug.Log("Successful xfer");
             if (isServer)
@@ -1012,6 +1050,7 @@ public class GameManager : MonoBehaviour
                 Client.client.CommitTransfer();
             }
 
+            SetInteractableActionButtons(false);
         }
         else
         {
@@ -1019,6 +1058,12 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        
+    }
+
+    public void PerformCommitTransfer()
+    {
+        Transfer(myTurn, selected);
         foreach (FieldPair fp in defendCards)
         {
             for (int i = 0; i < defendField.transform.childCount; i++)
@@ -1060,8 +1105,8 @@ public class GameManager : MonoBehaviour
             else
             {
                 Debug.Log("VALID DEF");
-                Defend(myTurn, def, fp);
-                //fp.defend = def;
+                //Defend(myTurn, def, fp);
+                fp.defend = def;
             }
         }
 
@@ -1092,6 +1137,20 @@ public class GameManager : MonoBehaviour
         {
 
         }*/
+        SetInteractableActionButtons(false);
+    }
+
+    public void PerformCommitDefend()
+    {
+        foreach (FieldPair fp in defendCards)
+        {
+            Card def = fp.defend;
+            fp.defend = null;
+            Debug.Log("VALID DEF");
+            Defend(myTurn, def, fp);
+            //fp.defend = def;
+        }
+
         defendCards.Clear();
         UpdateActionButtons();
         UpdateGameUI();
@@ -1103,7 +1162,7 @@ public class GameManager : MonoBehaviour
         if (ValidAttack(selected))
         {
           //  Debug.Log("CAN ATTK");
-            Attack(myTurn, selected);
+            //Attack(myTurn, selected);
             if (isServer)
             {
                 Server.server.CommitAttack();
@@ -1112,15 +1171,21 @@ public class GameManager : MonoBehaviour
             {
                 Client.client.CommitAttack();
             }
-            selected.Clear();
-            UpdateActionButtons();
-            UpdateGameUI();
+            SetInteractableActionButtons(false);
         }
         else
         {
            // Debug.Log("NOT VALID");
 
         }
+    }
+
+    public void PerformCommitAttack()
+    {
+        Attack(myTurn, selected);
+        selected.Clear();
+        UpdateActionButtons();
+        UpdateGameUI();
     }
 
     public void LoadClientScene()

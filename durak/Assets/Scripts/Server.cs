@@ -41,14 +41,24 @@ public class Server : MonoBehaviour
 
     private byte error;
 
+    // cnnID -> Player
     private Dictionary<int, Player> players = new Dictionary<int, Player>();
+    // cnnID -> Player Order Pos
+    private Dictionary<int, int> client2player = new Dictionary<int, int>();
+    // Player Order Pos -> cnnID
+    private Dictionary<int, int> player2client = new Dictionary<int, int>();
+    // Player Order Pos -> DC timer
+    private Dictionary<int, float> playerDC = new Dictionary<int,float>();
     //private List<Player> playerOrder = new List<Player>();
 
     private float lastMovementUpdate;
+    private float timer, timeout = 30f;
     private float movementUpdateRate = 0.05f;
 
     private byte[] msgOutBuffer = new byte[1024];
     private string awaitingResponseFor;
+
+    public List<string> activityLog;
 
     public GameObject playerPrefab;
     GameObject //startBroadcastButton,
@@ -126,6 +136,22 @@ public class Server : MonoBehaviour
         //    return;
         //}
 
+        if (GameManager.gm.inGame)
+        {
+            /*string s = "";
+            foreach (string str in activityLog)
+                s += str + "\n";
+            GameManager.gm.gameCanvas.transform.Find("log").GetChild(0).GetComponent<Text>().text = s;
+            */    
+            //List<int> dc = new List<int>();
+            foreach (KeyValuePair<int,float> kvp in playerDC)
+            {
+                Debug.Log(Time.time - kvp.Value + " " + kvp.Key);
+                if (Time.time - kvp.Value >= timeout)
+                    LeaveGame();
+            }
+        }
+
         int recHostId;
         int connectionId;
         int channelId;
@@ -135,13 +161,15 @@ public class Server : MonoBehaviour
         byte error;
         NetworkEventType recData = NetworkTransport.Receive(out recHostId, out connectionId, out channelId, recBuffer, bufferSize, out dataSize, out error);
         //Debug.Log(recHostId + " " + connectionId + " " + channelId + " " + recBuffer + " " + bufferSize + " " + dataSize + " " + error);
+
         if (recData != NetworkEventType.Nothing)
             Debug.Log(recData);
         switch (recData)
         {
             case NetworkEventType.ConnectEvent:    //2
                 Debug.Log("Player " + connectionId + " has connected");
-                OnConnection(connectionId);
+                Send("PURPOSE|", reliableChannel, connectionId);
+                //OnConnection(connectionId);
                 break;
             case NetworkEventType.DataEvent:       //3
                 string msg = Encoding.Unicode.GetString(recBuffer, 0, dataSize);
@@ -152,9 +180,6 @@ public class Server : MonoBehaviour
                 {
                     case "DONESETUP":
                         OnDoneSetup(connectionId);
-                        break;
-                    case "MYPOSITION":
-                        OnMyPosition(connectionId, float.Parse(splitData[1]), float.Parse(splitData[2]));
                         break;
                     case "NAMEIS":
                         OnNameIs(connectionId, splitData[1]);
@@ -174,22 +199,41 @@ public class Server : MonoBehaviour
                     case "NEEDTRUMP":
                         Send("TRUMP|" + GameManager.gm.trump.ToString(), reliableChannel, connectionId);
                         break;
+                    case "NEWCNN":
+                        OnConnection(connectionId);
+                        break;
                     case "PLAYERATTACK":
-                        OnReceivePlayerAttack(connectionId, splitData);
-                        Send(msg, reliableChannel, players);
+                        if (OnReceivePlayerAttack(connectionId, splitData))
+                            Send(msg, reliableChannel, players);
+                        else
+                            Send("PLAYERATTACKFAILED|", reliableChannel, connectionId);
                         break;
                     case "PLAYERENDBATTLE":
                 //        Debug.Log("RECEVED ENBGBATTLE");
-                        GameManager.gm.EndBattlePhase();
+                        GameManager.gm.PerformCommitEndBattle();
                         Send(msg, reliableChannel, players);
+                        activityLog.Add(msg);
                         break;
                     case "PLAYERDEFEND":
-                        OnReceivePlayerDefend(connectionId, splitData);
-                        Send(msg, reliableChannel, players);
+                        if (OnReceivePlayerDefend(connectionId, splitData))
+                        {
+                            Send(msg, reliableChannel, players);
+                            activityLog.Add(msg);
+                        }
+                        else
+                            Send("PLAYERDEFENDFAILED|", reliableChannel, connectionId);
                         break;
                     case "PLAYERTRANSFER":
-                        OnPlayerTransfer(connectionId, splitData);
-                        Send(msg, reliableChannel, players);
+                        if (OnPlayerTransfer(connectionId, splitData))
+                        {
+                            Send(msg, reliableChannel, players);
+                            activityLog.Add(msg);
+                        }
+                        else
+                            Send("PLAYERTRANSFERFAILED|", reliableChannel, connectionId);
+                        break;
+                    case "RECONNECT":
+                        OnReconnect(connectionId, splitData);
                         break;
                     case "STARTGAME":
                         OnReceivedStartGame(connectionId);
@@ -205,7 +249,8 @@ public class Server : MonoBehaviour
                 {
                     if (GameManager.gm.durak != -1)
                         return;
-                    LeaveGame();
+                    playerDC.Add(client2player[connectionId], Time.time);
+                    //LeaveGame();
                 }
                 else
                 {
@@ -228,7 +273,32 @@ public class Server : MonoBehaviour
         }*/
 
     }
-    private void OnPlayerTransfer(int cnnId, string[] splitData)
+
+    private void OnReconnect(int cnnId, string[] data)
+    {
+        if (!GameManager.gm.inGame)
+            return;
+        int player = int.Parse(data[1]);
+        int lastCommittedActivity = int.Parse(data[2]);
+        client2player[cnnId] = player;
+        player2client[player] = cnnId;
+        playerDC.Remove(player);
+        ResendCommits(cnnId, lastCommittedActivity);
+        Send("ANYREQUESTS|", reliableChannel, cnnId);
+        //for (int i = lastCommittedActivity; i < activityLog.Count; i++)
+        //    Send(activityLog[i], reliableChannel, cnnId);
+        //Send("LOG|" + activityLog.Count + "|" + activityLog[activityLog.Count - 1], reliableChannel, cnnId);
+    }
+
+    private void ResendCommits(int cnnId, int lastCommit)
+    {
+        if (!GameManager.gm.inGame)
+            return;
+        for (int i = lastCommit; i < activityLog.Count; i++)
+            Send(activityLog[i], reliableChannel, cnnId);
+    }
+
+    private bool OnPlayerTransfer(int cnnId, string[] splitData)
     {
        // Debug.Log("XFERER");
         int player = int.Parse(splitData[1]);
@@ -238,46 +308,41 @@ public class Server : MonoBehaviour
             Card c = Card.ToCard(splitData[i]);
             toTransfer.Add(c);
         }
-        GameManager.gm.Transfer(cnnId, toTransfer);
+        return GameManager.gm.Transfer(player, toTransfer);
     }
 
-    private void OnReceivePlayerDefend(int cnnId, string[] data)
+    private bool OnReceivePlayerDefend(int cnnId, string[] data)
     {
-      //  Debug.Log("player " + GameManager.gm.playerOrder[cnnId] + " defends" + data[1]);
+        //  Debug.Log("player " + GameManager.gm.playerOrder[cnnId] + " defends" + data[1]);
+        int player = int.Parse(data[1]);
         for (int i = 2; i < data.Length; i++)
         {
             string[] splitData = data[i].Split(' ');
             Card atk = Card.ToCard(splitData[0]),
                  def = Card.ToCard(splitData[1]);
 
-            if (!GameManager.gm.Defend(cnnId, def, atk))
+            if (!GameManager.gm.Defend(player, def, atk))
             {
                 Debug.Log("FAILED DEF");
-                return;
+                return false;
             }
         }
+        return true;
     }
 
-    private void OnReceivePlayerAttack(int cnnId, string[] splitData)
+    private bool OnReceivePlayerAttack(int cnnId, string[] splitData)
     {
        // Debug.Log("player " + GameManager.gm.playerOrder[cnnId] + " attacks" + splitData[1]);
        // Debug.Log("recve player attk");
         if (GameManager.gm.phase == 2)
-            return;
+            return false;
         int playerTurn = int.Parse(splitData[1]);
         List<Card> attackCards = new List<Card>();
         for (int i = 2; i < splitData.Length; i++)
         {
             attackCards.Add(Card.ToCard(splitData[i]));
         }
-        if (GameManager.gm.Attack(playerTurn, attackCards))
-        {
-            Debug.Log("player success atk");
-        }
-        else
-        {
-            Debug.Log("Failed attak");
-        }
+        return GameManager.gm.Attack(playerTurn, attackCards);  
     }
 
     public void CommitTransfer()
@@ -290,6 +355,8 @@ public class Server : MonoBehaviour
         }
         msg = msg.Trim('|');
         Send(msg, reliableChannel, players);
+        activityLog.Add(msg);
+        GameManager.gm.PerformCommitTransfer();
     }
 
     public void CommitEndBattle()
@@ -297,6 +364,8 @@ public class Server : MonoBehaviour
      //   Debug.Log("ENDING BATTLE");
         string msg = "PLAYERENDBATTLE|" + GameManager.gm.myTurn + "|";
         Send(msg, reliableChannel, players);
+        activityLog.Add(msg);
+        GameManager.gm.PerformCommitEndBattle();
     }
 
     public void CommitDefend()
@@ -308,6 +377,8 @@ public class Server : MonoBehaviour
         }
         msg = msg.Trim('|');
         Send(msg, reliableChannel, players);
+        activityLog.Add(msg);
+        GameManager.gm.PerformCommitDefend();
         //Send(msg, reliableChannel, players);
     }
 
@@ -320,6 +391,8 @@ public class Server : MonoBehaviour
         }
         msg = msg.Trim('|');
         Send(msg, reliableChannel, players);
+        activityLog.Add(msg);
+        GameManager.gm.PerformCommitAttack();
     }
 
     private bool ConfirmAllAcks()
@@ -348,6 +421,7 @@ public class Server : MonoBehaviour
         awaitingResponseFor = "PLAYERSTARTTURN";
         GameManager.gm.StartTurn(GameManager.gm.originalTurn);
         Send(awaitingResponseFor + "|" + GameManager.gm.originalTurn, reliableChannel, players);
+        activityLog.Add("PLAYERSTARTTURN|" + GameManager.gm.originalTurn);
     }
 
     private void OnDoneSetup(int cnnId)
@@ -459,6 +533,8 @@ public class Server : MonoBehaviour
         {
             Player p = kvp.Value;
             p.hand = GameManager.gm.deck.Draw(GameManager.gm.initialDrawAmount);
+            client2player.Add(kvp.Key, GameManager.gm.playerOrder.Count);
+            player2client.Add(GameManager.gm.playerOrder.Count, kvp.Key);
             GameManager.gm.playerOrder.Add(p);
             m += p.connectionId + "|";
             //p.hand = GameManager.gm.playerHands[i];
@@ -497,6 +573,7 @@ public class Server : MonoBehaviour
         awaitingResponseFor = "DONESETUP";
         //GameManager.gm.playerOrder = playerOrder;
         Send("DONESETUP|", reliableChannel, players);
+        activityLog.Add("DONESETUP|");
         /*
         for (int i = 0; i < players.Count; i++)
         {
@@ -543,8 +620,12 @@ public class Server : MonoBehaviour
     {
         //Debug.Log("START GAME");
         StopBroadcast();
+        activityLog = new List<string>();
         Send("STARTGAME|", reliableChannel, players);
+        activityLog.Add("STARTGAME|");
         gameStarted = true;
+        client2player = new Dictionary<int, int>();
+        player2client = new Dictionary<int, int>();
         awaitingResponseFor = "STARTGAME";
         players[0].ack = true;
     }
@@ -570,6 +651,7 @@ public class Server : MonoBehaviour
        // Debug.Log("LEAVE LOBBY");
         // Tell everybody to leave lobby
         Send("LEAVEGAME|", reliableChannel, players);
+        GameManager.gm.inGame = false;
         CloseServer();
         GameManager.gm.GoToMainScene();
     }
@@ -728,9 +810,9 @@ public class Server : MonoBehaviour
 
     private void Send(string message, int channelId, int cnnId)
     {
+        //if (!players.ContainsKey(cnnId))
+        //    return;
         Debug.Log("send" + message);
-        if (!players.ContainsKey(cnnId))
-            return;
         NetworkTransport.Send(hostId, cnnId, channelId, Encoding.Unicode.GetBytes(message), message.Length * sizeof(char), out error);
     }
 

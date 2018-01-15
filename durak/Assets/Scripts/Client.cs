@@ -37,17 +37,13 @@ public class Client : MonoBehaviour
     private const int MAX_CONNECTION = 100;
 
     private int port = 5702;
-
-    [SerializeField]
+    
     public int broadcastPort = 47777;
-
-    [SerializeField]
+    
     public int broadcastKey = 1000;
-
-    [SerializeField]
+    
     public int broadcastVersion = 1;
-
-    [SerializeField]
+    
     public int broadcastSubVersion = 1;
 
     private int hostId;
@@ -64,18 +60,23 @@ public class Client : MonoBehaviour
     private int unreliableChannel;
 
     private float connectionTime;
+    private float timer, timeout = 30f;
     private bool isStarted = false;
     private bool inLobby = false;
+    private bool requestingConnection = false;
     private bool inGame = false;
     private bool isConnected = false;
     private bool destroyed = false;
     private bool isOriginal = false;
+    private bool isDisconnected = false;
     private bool initialConfirmation = true;
 
+    private string lastRequest = "NOREQUESTS|";
     private byte error;
 
     private bool findingHosts = false;
 
+    public List<string> activityLog;
 
     int recHostId;
     int channelId;
@@ -84,12 +85,10 @@ public class Client : MonoBehaviour
     int dataSize;
 
     private byte[] buffer = new byte[1024];
-
-    [SerializeField]
+    
     public Dictionary<int, Player> players = new Dictionary<int, Player>();
     //public List<Player> playerOrder;
-
-    [SerializeField]
+    
     public Dictionary<Host, GameObject> hosts = new Dictionary<Host, GameObject>();
 
     public Transform hostsList;
@@ -148,19 +147,42 @@ public class Client : MonoBehaviour
                 hosts.Remove(expiredHosts[i]);
             }
         }
-        if (!isConnected)// || findingHosts)
+        if (!requestingConnection && !inLobby && !inGame)// || findingHosts)
         {
             FindHosts();
-        }
-        if (!isConnected)
-        {
-            //FindHosts();
             return;
+        }
+
+        if (GameManager.gm.inGame)
+        {
+            /*string s = "";
+            foreach (string str in activityLog)
+                s += str + "\n";
+            GameManager.gm.gameCanvas.transform.Find("log").GetChild(0).GetComponent<Text>().text = s;
+            */
+            if(isDisconnected)
+            {
+                if (Time.time - timer >= timeout)
+                {
+                    Debug.Log("u DC");
+                    LeaveGame();
+                }
+                else
+                {
+
+                    //Debug.Log("attenpt reconnect" + (Time.time - timer)  + " " + timeout);
+                    //ReconnectTo(connectedHost);
+                    //ConnectTo(connectedHost);
+                }
+            }
         }
         NetworkEventType recData = NetworkTransport.Receive(out recHostId, out connectionId, out channelId, recBuffer, bufferSize, out dataSize, out error);
         //Debug.Log(recData);
         switch (recData)
         {
+            case NetworkEventType.ConnectEvent:
+                Debug.Log("I CONNE");
+                break;
             case NetworkEventType.DataEvent:       //3
                 //Debug.Log("data");
                 string msg = Encoding.Unicode.GetString(recBuffer, 0, dataSize);
@@ -169,6 +191,9 @@ public class Client : MonoBehaviour
 
                 switch (splitData[0])
                 {
+                    case "ANYREQUESTS":
+                        OnAnyRequests();
+                        break;
                     case "ASKNAME":
                         OnAskName(splitData);
                         break;
@@ -206,13 +231,21 @@ public class Client : MonoBehaviour
                         break;
                     case "PLAYERATTACK":
                         OnReceivePlayerAttack(splitData);
+                        activityLog.Add(msg);
+                        break;
+                    case "PLAYERATTACKFAILED":
+                        Debug.Log("failed to attak");
                         break;
                     case "PLAYERENDBATTLE":
                        // Debug.Log("RECEVED ENBGBATTLE");
-                        GameManager.gm.EndBattlePhase();
+                        GameManager.gm.PerformCommitEndBattle();
+                        activityLog.Add(msg);
+                        if(int.Parse(splitData[1]) == GameManager.gm.myTurn)
+                            lastRequest = "NOREQUEST|" + GameManager.gm.myTurn;
                         break;
                     case "PLAYERDEFEND":
                         OnReceivePlayerDefend(splitData);
+                        activityLog.Add(msg);
                         break;
                     case "PLAYERHAND":
                         ReceivePlayersHands(splitData);
@@ -225,9 +258,14 @@ public class Client : MonoBehaviour
                         break;
                     case "PLAYERSTARTTURN":
                         OnPlayerStartTurn(int.Parse(splitData[1]));
+                        activityLog.Add(msg);
                         break;
                     case "PLAYERTRANSFER":
                         OnPlayerTransfer(splitData);
+                        activityLog.Add(msg);
+                        break;
+                    case "PURPOSE":
+                        OnPurpose();
                         break;
                     case "STARTGAME":
                         StartGame();
@@ -260,9 +298,56 @@ public class Client : MonoBehaviour
                     if (GameManager.gm.durak != -1)
                         return;
                     Debug.Log("THATS OUR MAIN CON");
-                    LeaveGame();
+                    isDisconnected = true;
+                    timer = Time.time;
+                    ReconnectTo(connectedHost);
+                    //LeaveGame();
                 }
                 break;
+        }
+
+        
+        if(requestingConnection)
+        {
+            //Debug.Log(Time.time - timer + " " + timeout);
+            if (Time.time - timer >= timeout)
+            {
+                Debug.Log("WAITED TOO LONG");
+                Disconnect();
+                //isConnected = false;
+                findingHosts = true;
+                requestingConnection = false;
+                inLobby = false;
+                //inGame = false;
+            }
+        }
+
+    }
+
+    void OnAnyRequests()
+    {
+        Send(lastRequest, reliableChannel);
+    }
+
+    void ReconnectTo(Host h)
+    {
+        Debug.Log("Reconnecte");
+        Disconnect();
+        ConnectTo(h);
+    }
+
+    void OnPurpose()
+    {
+        if (!GameManager.gm.inGame)
+        {
+            Send("NEWCNN|", reliableChannel);
+        }
+        else
+        {
+            Debug.Log("Reconnected");
+            Send("RECONNECT|" + GameManager.gm.myTurn + "|" + activityLog.Count, reliableChannel);
+            isDisconnected = false;
+            requestingConnection = false;
         }
     }
 
@@ -276,6 +361,7 @@ public class Client : MonoBehaviour
         }
         msg = msg.Trim('|');
         Send(msg, reliableChannel);
+        lastRequest = msg;
     }
 
     public void CommitEndBattle()
@@ -283,6 +369,7 @@ public class Client : MonoBehaviour
       //  Debug.Log("ENDING BATTLE");
         string msg = "PLAYERENDBATTLE|" + GameManager.gm.myTurn + "|";
         Send(msg, reliableChannel);
+        lastRequest = msg;
     }
 
     public void CommitDefend()
@@ -294,6 +381,7 @@ public class Client : MonoBehaviour
         }
         msg = msg.Trim('|');
         Send(msg, reliableChannel);
+        lastRequest = msg;
         //Send(msg, reliableChannel, players);
     }
 
@@ -306,6 +394,7 @@ public class Client : MonoBehaviour
         }
         msg = msg.Trim('|');
         Send(msg, reliableChannel);
+        lastRequest = msg;
     }
 
     private void OnPlayerTransfer(string[] splitData)
@@ -313,7 +402,11 @@ public class Client : MonoBehaviour
         //Debug.Log("XFERER");
         int player = int.Parse(splitData[1]);
         if (player == GameManager.gm.myTurn)
+        {
+            GameManager.gm.PerformCommitTransfer();
+            lastRequest = "NOREQUEST|" + GameManager.gm.myTurn;
             return;
+        }
         List<Card> toTransfer = new List<Card>();
         for(int i = 2; i < splitData.Length; i++)
         {
@@ -328,7 +421,11 @@ public class Client : MonoBehaviour
         //Debug.Log("player defends" + data[1]);
         int playerTurn = int.Parse(data[1]);
         if (playerTurn == GameManager.gm.myTurn)
+        {
+            GameManager.gm.PerformCommitDefend();
+            lastRequest = "NOREQUEST|" + GameManager.gm.myTurn;
             return;
+        }
         for (int i = 2; i < data.Length; i++)
         {
             string[] splitData = data[i].Split(' ');
@@ -348,8 +445,14 @@ public class Client : MonoBehaviour
     {
        // Debug.Log("recve player attk");
         int playerTurn = int.Parse(splitData[1]);
-        if (GameManager.gm.phase == 2 || GameManager.gm.myTurn == playerTurn) 
+        if (GameManager.gm.phase == 2)
             return;
+        if(GameManager.gm.myTurn == playerTurn)
+        {
+            GameManager.gm.PerformCommitAttack();
+            lastRequest = "NOREQUEST|" + GameManager.gm.myTurn;
+            return;
+        }
         List<Card> attackCards = new List<Card>();
         for(int i = 2; i < splitData.Length; i++)
         {
@@ -395,6 +498,7 @@ public class Client : MonoBehaviour
     {
         GameManager.gm.SetupUI();
         Send("DONESETUP|", reliableChannel);
+        activityLog.Add("DONESETUP|");
     }
 
     private void ConfirmDoneSetup()
@@ -465,7 +569,7 @@ public class Client : MonoBehaviour
 
     private void ReceivePlayerOrder(string[] order)
     {
-        Debug.Log("Here");
+        //Debug.Log("Here");
         if (GameManager.gm.playerOrder != null && GameManager.gm.playerOrder.Count > 1)
             return;
         //playerOrder = new List<Player>();
@@ -620,9 +724,11 @@ public class Client : MonoBehaviour
     {
         ClearHostList();
         GameManager.gm.GoToGameScene();
-        //deckCount = -1;
-        GameManager.gm.StartGame(ourClientId);
+        //deckCount = -1
         Send("STARTGAME|", reliableChannel);
+        activityLog.Add("STARTGAME|");
+        inGame = true;
+        GameManager.gm.StartGame(ourClientId);
     }
 
     public void Disconnect()
@@ -633,6 +739,7 @@ public class Client : MonoBehaviour
         connectedHost = null;
         Debug.Log("Disconnected");
         isConnected = false;
+
     }
 
     public void LeaveGame()
@@ -640,6 +747,7 @@ public class Client : MonoBehaviour
         Debug.Log("LEAVING Game");
         Disconnect();
         inLobby = false;
+        GameManager.gm.inGame = false;
         //ClearGameObjects();
         CloseClient();
         GameManager.gm.GoToMainScene();
@@ -690,10 +798,11 @@ public class Client : MonoBehaviour
 
     public void ConnectTo(Host host)
     {
-        //Debug.Log("Connecting");
+        Debug.Log("Connecting" + host == null);
         connectedHost = host;
         //Debug.Log(host != null);
-        NetworkTransport.RemoveHost(hostId);
+        if(hostId != -1)
+            NetworkTransport.RemoveHost(hostId);
 
         ConnectionConfig cc = new ConnectionConfig();
 
@@ -708,12 +817,13 @@ public class Client : MonoBehaviour
             return;
         }
         connectionId = NetworkTransport.Connect(hostId, connectedHost.ip, connectedHost.port, 0, out error);
-        isConnected = true;
-
+        //isConnected = true;
+        timer = Time.time;
+        requestingConnection = true;
         //lobbySearchCanvas.transform.Find("FindHostBtn").gameObject.SetActive(false);
         //lobbySearchCanvas.transform.Find("StopSearchBtn").gameObject.SetActive(false);
         //Debug.Log("connected ot host");
-        findingHosts = false;
+        //findingHosts = false;
         //Debug.Log(connectionId);
 
     }
@@ -767,6 +877,7 @@ public class Client : MonoBehaviour
             //Debug.Log(hostId);
             if (hostId == -1)
             {
+                NetworkTransport.RemoveHost(hostId);
                 Debug.LogError("NetworkDiscovery StartAsClient - addHost failed");
                 return;
             }
@@ -884,6 +995,8 @@ public class Client : MonoBehaviour
             lobbyCanvas.SetActive(true);
             lobbySearchCanvas.SetActive(false);
             //inGameCanvas.SetActive(true);
+            inLobby = true;
+            requestingConnection = false;
             playerName = GameManager.gm.playerName;
             isStarted = true;
         }
